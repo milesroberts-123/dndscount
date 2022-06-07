@@ -6,9 +6,14 @@ import numpy as np
 
 # input for overall script, just fasta file of codon-aligned sequences
 fastaInput = sys.argv[1]
+analysisMode = sys.argv[2]
 
 # DNA alphabet, could be changed but probably not
 alphabet = ["A", "T", "G", "C"]
+
+#############
+# FUNCTIONS #
+#############
 
 ### Determine expected number of nonsynonymous sites in a codon
 # input: codon
@@ -63,7 +68,7 @@ def countSubs(pathway):
     else:
       sd = sd + 1
   return([nd, sd])
-  
+
 ### Determine distance between reference and sample codon
 # input: two codons of same length
 # output: distance between two codons (i.e. number of pairwise differences)
@@ -71,21 +76,21 @@ def codonDistance(codon1, codon2):
   # make sequences mutable
   codon1 = MutableSeq(codon1)
   codon2 = MutableSeq(codon2)
-  
+
   # vectors to store outputs
   distance = 0
   nd = 0
   sd = 0
   mismatchPositions = list() # mismatches between codons
-  
-  #calculate differences between two codons  
+
+  #calculate differences between two codons
   for i in range(len(codon1)):
     letter1 = codon1[i]
     letter2 = codon2[i]
     if letter1 != letter2:
       distance = distance + 1
       mismatchPositions.append(i)
-  
+
   # If the codons are identical, then there are no differences
   if distance == 0:
     return([nd, sd])
@@ -97,7 +102,7 @@ def codonDistance(codon1, codon2):
     else:
       nd = nd + 1
       return([nd, sd])
-  
+
   # If codons differ by two basepairs, there are two possible step-wise mutational pathways
   if distance == 2:
     # construct pathway one
@@ -110,7 +115,7 @@ def codonDistance(codon1, codon2):
     pathway.append(interCodon[:])
     pathway1Count = countSubs(pathway) # count subs
     #print(pathway)
-    
+
     # construct pathway two
     pathway = list()
     interCodon = codon1[:]
@@ -121,11 +126,11 @@ def codonDistance(codon1, codon2):
     pathway.append(interCodon[:])
     pathway2Count = countSubs(pathway) # count substitutions
     #print(pathway)
-    
+
     # assume pathways equally probable, so average result
     sum_list = [(a + b)/2 for a, b in zip(pathway1Count, pathway2Count)]
     return(sum_list)
-    
+
   if distance == 3:
     mutPos = [[0,1,2],[0,2,1],[1,2,0],[1,0,2],[2,1,0],[2,0,1]]
     subCounts = list() # output counts of substitutions per pathway
@@ -145,72 +150,120 @@ def codonDistance(codon1, codon2):
     # assume pathways are equally probable, so average result
     return(list(np.sum(subCounts, axis=0)/6))
 
-### APPLY FUNCTIONS ###
+##############
+# LOAD FASTA #
+##############
+
 # Load sequences
 records = list(SeqIO.parse(fastaInput, "fasta"))
 
 # Number of sequences
 recNum = len(records)
 
-# print header of output
-print("\t".join(["reference", "sample", "N", "S", "Nd", "Sd", "pN", "pS", "dN", "dS", "dNdS"]))
-    
-# Loop over all pairs of sequences
-for j in range((recNum - 1)):
-  for k in range(j+1, recNum):
-    refRecord = records[j]
-    samRecord = records[k] 
-    refSeq = refRecord.seq
-    samSeq = samRecord.seq
-    samName = samRecord.name
-    refName = refRecord.name
+##########################
+# SEQUENCE PAIR ANALYSIS #
+##########################
 
-    # count number of codons in sequence
-    codonCount = len(refSeq)/3
-  
-    # counts of nonsynonymous sites
-    Nref = list()
-    Nsam = list()
+if analysisMode == "pair":
+	# print header of output
+	print("\t".join(["reference", "sample", "N", "S", "Nd", "Sd", "pN", "pS", "dN", "dS", "dNdS"]))
 
-    # loop over codons in reference sequence
-    for i in range(int(codonCount)):
-      codonRefSeq = refSeq[i*3:i*3+3]
-      codonSamSeq = samSeq[i*3:i*3+3]
-      Nref.append(nonsynonymousSites(codonRefSeq))
-      Nsam.append(nonsynonymousSites(codonSamSeq))
-  
-    # sum over nonsynonymous sites of individual codons to get total
-    Nref = sum(Nref)
-    Nsam = sum(Nsam)
+	# Loop over all pairs of sequences
+	for j in range((recNum - 1)):
+		for k in range(j+1, recNum):
+			refRecord = records[j]
+			samRecord = records[k]
+			refSeq = refRecord.seq
+			samSeq = samRecord.seq
+			samName = samRecord.name
+			refName = refRecord.name
 
-    # average the number of nonsynonymous sites in both sequences
-    N = (Nref + Nsam)/2
+    			# count number of codons in sequence
+			codonCount = len(refSeq)/3
 
-    # calculate number of synonymous sites: total sites - nonsynonymous sites
-    S = 3*codonCount - N
-  
-    # calculate number of differences between sequence pair
-    NdSd = list()
-    for i in range(int(codonCount)):
-      codonRefSeq = refSeq[i*3:i*3+3]
-      codonSamSeq = samSeq[i*3:i*3+3]
-      NdSd.append(codonDistance(codonRefSeq, codonSamSeq))
-  
-    # Sum differences across codons to get total differences
-    NdSd = np.sum(NdSd, axis=0)
-    Nd = NdSd[0]
-    Sd = NdSd[1]
-  
-    # Calculate proportion of differences
-    pN = Nd/N
-    pS = Sd/S
-  
-    # Calculate substitution rates, correct for multiple substitutions per site using Jukes and Cantor 1969 formula
-    dN = (-3/4)*np.log(1-(4/3)*pN)
-    dS = (-3/4)*np.log(1-(4/3)*pS)
-  
-    # output final result
-    print("\t".join([refName, samName, str(N), str(S), str(Nd), str(Sd), str(pN), str(pS), str(dN), str(dS), str(dN/dS)]))
+    			# counts of nonsynonymous sites
+			Nref = list()
+			Nsam = list()
+
+    			# loop over codons in reference sequence
+			for i in range(int(codonCount)):
+				codonRefSeq = refSeq[i*3:i*3+3]
+				codonSamSeq = samSeq[i*3:i*3+3]
+				Nref.append(nonsynonymousSites(codonRefSeq))
+				Nsam.append(nonsynonymousSites(codonSamSeq))
+
+    			# sum over nonsynonymous sites of individual codons to get total
+			Nref = sum(Nref)
+			Nsam = sum(Nsam)
+
+    			# average the number of nonsynonymous sites in both sequences
+			N = (Nref + Nsam)/2
+
+    			# calculate number of synonymous sites: total sites - nonsynonymous sites
+			Sref = 3*codonCount - Nref
+			Ssam = 3*codonCount - Nsam
+
+			# average synonymous sites
+			S = (Sref + Ssam)/2
+
+    			# calculate number of differences between sequence pair
+			NdSd = list()
+			for i in range(int(codonCount)):
+				codonRefSeq = refSeq[i*3:i*3+3]
+				codonSamSeq = samSeq[i*3:i*3+3]
+				NdSd.append(codonDistance(codonRefSeq, codonSamSeq))
+
+    			# Sum differences across codons to get total differences
+			NdSd = np.sum(NdSd, axis=0)
+			Nd = NdSd[0]
+			Sd = NdSd[1]
+
+    			# Calculate proportion of differences
+			pN = Nd/N
+			pS = Sd/S
+
+    			# Calculate substitution rates
+			# correct for multiple substitutions per site using Jukes and Cantor 1969 formula
+			dN = (-3/4)*np.log(1-(4/3)*pN)
+			dS = (-3/4)*np.log(1-(4/3)*pS)
+
+    			# output final result
+			print("\t".join([refName, samName, str(N), str(S), str(Nd), str(Sd), str(pN), str(pS), str(dN), str(dS), str(dN/dS)]))
+
+############################
+# SINGLE SEQUENCE ANALYSIS #
+############################
+
+if analysisMode == "sing":
+	print("\t".join(["sequence", "N", "S", "L"]))
+	# Loop over each sequence, counting nonsynonymous sites
+	for j in range(recNum):
+		oneRecord = records[j]
+		oneSeq = oneRecord.seq
+		oneName = oneRecord.name
+
+		# Get sequence length
+		L = len(oneSeq)
+
+		# count number of codons in sequence
+		codonCount = L/3
+
+    		# counts of nonsynonymous sites per codon
+		N = list()
+
+    		# loop over codons, counting nonsynonymous sites
+		for i in range(int(codonCount)):
+			codonSeq = oneSeq[i*3:i*3+3]
+			N.append(nonsynonymousSites(codonSeq))
+
+		# sum over nonsynonymous sites of individual codons to get total
+		N = sum(N)
+
+		# calculate number of synonymous sites: total sites - nonsynonymous sites
+		S = 3*codonCount - N
+
+		# output final result
+		print("\t".join([oneName, str(N), str(S), str(L)]))
 
 # Test countSubs function
 #print(countSubs([Seq("CCG"), Seq("CTG"), Seq("CTA")]))
